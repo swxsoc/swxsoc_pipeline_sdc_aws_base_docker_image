@@ -3,7 +3,7 @@ version: 0.2
 env:
   variables:
     ENVIRONMENT: "dev"
-    IMAGE_NAME: "dev-swsoc-pipeline-docker-lambda-base"
+    IMAGE_NAME: "dev-swxsoc-pipeline-docker-lambda-base"
 
 phases: 
   pre_build:
@@ -14,12 +14,12 @@ phases:
         if git describe --tags --exact-match > /dev/null 2>&1; then
           echo "This is a tag push event"
           ENVIRONMENT="prod"
-          IMAGE_NAME="swsoc-pipeline-docker-lambda-base"
+          IMAGE_NAME="swxsoc-pipeline-docker-lambda-base"
           GIT_TAG=`git describe --tags --exact-match`
         elif [[ "${CDK_ENVIRONMENT}" == "PRODUCTION" ]]; then
           echo "This is a production environment"
           ENVIRONMENT="prod"
-          IMAGE_NAME="swsoc-pipeline-docker-lambda-base"
+          IMAGE_NAME="swxsoc-pipeline-docker-lambda-base"
           GIT_TAG=`date -u +"%Y%m%d%H%M%S"`
         else
           echo "This is a development environment"
