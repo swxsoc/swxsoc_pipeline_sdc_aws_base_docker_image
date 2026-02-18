@@ -1,0 +1,41 @@
+ARG PLATFORM=linux/amd64
+FROM --platform=$PLATFORM public.ecr.aws/lts/ubuntu:22.04_stable
+
+# Performs updates and installs git, unzip, python3.10, python3-pip, python3.10-dev and pylint packages
+RUN apt-get update && \
+    apt-get -y upgrade && \
+    apt-get -y install --no-install-recommends -y python3-pip pylint git wget unzip make && \
+    ln -s /usr/bin/python3 /usr/bin/python
+
+# For sphinx to build in the container
+ENV LC_ALL=C
+
+# Copy Python requirements.txt file into image (list of common dependencies)
+COPY requirements.txt  .
+
+# Copy test scripts
+COPY /container-tests  /container-tests
+
+# Upgrade pip
+RUN  python3 -m pip install --upgrade pip
+
+# To fix spacepy dependency issue
+RUN  python3 -m pip install --upgrade --force-reinstall setuptools==59.5.0 setuptools_scm==6.3.2
+
+# Install Python dependencies defined in requirements
+RUN  python3 -m pip install -r requirements.txt
+
+# User to run the container
+ARG USERNAME=vscode
+ARG USER_UID=1000
+ARG USER_GID=$USER_UID
+
+# Create the user
+RUN groupadd --gid $USER_GID $USERNAME \
+    && useradd --uid $USER_UID --gid $USER_GID -m $USERNAME \
+    #
+    # Add sudo support for the non-root user
+    && apt-get update \
+    && apt-get install -y sudo \
+    && echo $USERNAME ALL=\(root\) NOPASSWD:ALL > /etc/sudoers.d/$USERNAME \
+    && chmod 0440 /etc/sudoers.d/$USERNAME

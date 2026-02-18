@@ -1,0 +1,143 @@
+name: Update CDF Library
+
+on:
+  workflow_dispatch:
+
+permissions:
+  id-token: write
+  contents: write
+  pull-requests: write
+
+jobs:
+  build:
+    runs-on: ubuntu-22.04
+    steps:
+      - name: Check if the user is a maintainer
+        id: check_maintainer
+        run: |
+          USERNAME="${{ github.actor }}"
+          REPO="${{ github.repository }}"
+          IS_MAINTAINER=$(curl -s -H "Authorization: Bearer ${{ secrets.GITHUB_TOKEN }}" "https://api.github.com/repos/$REPO/collaborators" | jq -r ".[] | select(.login == \"$USERNAME\")")
+          echo is_maintainer=$IS_MAINTAINER >> $GITHUB_OUTPUT
+      
+      - uses: actions/checkout@v3 # Checkout the repository
+        if: steps.check_maintainer.outputs.is_maintainer != '' # Only run this step if the user is a maintainer
+        
+      - name: Check for the latest version of CDF library
+        id: check_latest_version
+        if: steps.check_maintainer.outputs.is_maintainer != '' # Only run this step if the user is a maintainer
+        run: |
+          URL="https://spdf.gsfc.nasa.gov/pub/software/cdf/dist/latest/linux/"
+          FILENAME=$(curl -sL "$URL" | grep -oP 'href="[^"]*dist-cdf\.tar\.gz"' | awk -F '"' '!/\.md5$/ { print $2 }')
+
+          echo "Latest CDF version: $FILENAME"
+          echo cdf_url=$URL >> $GITHUB_OUTPUT
+          # Extract the line containing the CDF version
+          CDF_VERSION_LINE=$(grep -oP 'Version: cdf[^"]*' Dockerfile)
+
+          # Extract the version number from the line using awk and sed
+          CDF_VERSION=$(echo "$CDF_VERSION_LINE" | awk -F ': ' '{print $2}')
+
+          # Print the extracted CDF version
+          echo "CDF Version: $CDF_VERSION"
+          echo cdf_filename=$CDF_VERSION >> $GITHUB_OUTPUT
+          echo latest_version=$FILENAME >> $GITHUB_OUTPUT
+
+      - name: Download and extract CDF library
+        if: steps.check_maintainer.outputs.is_maintainer != '' # Only run this step if the user is a maintainer
+        id : download_cdf
+        run: |
+          LATEST_VERSION="${{ steps.check_latest_version.outputs.latest_version }}"
+          URL="${{ steps.check_latest_version.outputs.cdf_url }}"
+          FILENAME="${{ steps.check_latest_version.outputs.cdf_filename }}"
+          PARSED_LATEST_VERSION="${LATEST_VERSION%.tar.gz}"
+          # Check if the current version matches the latest version
+          if [ "$FILENAME" != "$PARSED_LATEST_VERSION" ]; then
+            echo "Updating CDF library version in Dockerfile..."
+            # Update version in the comment line
+            awk -v latest_ver="$PARSED_LATEST_VERSION" '/Version: cdf/{gsub(/Version: cdf[^"]*/, "Version: " latest_ver)} 1' Dockerfile > Dockerfile.updated
+            mv Dockerfile.updated Dockerfile
+            
+            # Update the download link
+            awk -v latest_ver="$PARSED_LATEST_VERSION" 'BEGIN{OFS=FS} /^RUN wget https:\/\/sdc-aws-support.s3.amazonaws.com\/cdf-binaries\/cdf[0-9._-]*-dist-cdf\.zip/{gsub(/cdf[0-9._-]*-dist-cdf\.zip/, latest_ver ".zip")} 1' Dockerfile > Dockerfile.updated
+            mv Dockerfile.updated Dockerfile
+            
+            # Update the unzip command
+            awk -v latest_ver="$PARSED_LATEST_VERSION" 'BEGIN{OFS=FS} /^RUN unzip cdf[0-9._-]*-dist-cdf\.zip/{gsub(/unzip cdf[0-9._-]*-dist-cdf\.zip/, "unzip " latest_ver ".zip")} 1' Dockerfile > Dockerfile.updated
+            mv Dockerfile.updated Dockerfile
+
+            echo is_up_to_date='' >> $GITHUB_OUTPUT
+          else
+            echo "CDF library is up to date."
+            echo is_up_to_date='$PARSED_LATEST_VERSION' >> $GITHUB_OUTPUT
+          fi
+
+          # Download and extract the latest CDF library
+          wget "${URL}${LATEST_VERSION}"
+          tar zxvpf "$LATEST_VERSION" && rm "$LATEST_VERSION"
+      
+      - name: Install dependencies for Building CDF library
+        if: steps.check_maintainer.outputs.is_maintainer != '' && steps.download_cdf.outputs.is_up_to_date == '' # Only run this step if the user is a maintainer and the CDF library is not up to date
+        run: sudo apt-get update && sudo apt-get -y install gfortran libncurses5-dev
+
+      - name: Build CDF library
+        id : build_cdf
+        if: steps.check_maintainer.outputs.is_maintainer != '' && steps.download_cdf.outputs.is_up_to_date == '' # Only run this step if the user is a maintainer and the CDF library is not up to date
+        run: |
+          FILENAME="${{ steps.check_latest_version.outputs.latest_version }}"
+      
+          # Assuming the extracted folder has the same name as the tar.gz file without the extension
+          FOLDER_NAME="${FILENAME%-cdf.tar.gz}"
+          cd "$FOLDER_NAME"
+          make OS=linux ENV=gnu all
+          echo "CDF library built successfully."
+          echo folder_name=$FOLDER_NAME >> $GITHUB_OUTPUT
+
+      - name: Install CDF library
+        if: steps.check_maintainer.outputs.is_maintainer != '' && steps.download_cdf.outputs.is_up_to_date == '' # Only run this step if the user is a maintainer and the CDF library is not up to date
+        run: |
+            FOLDER_NAME="${{ steps.build_cdf.outputs.folder_name }}"
+
+            cd "$FOLDER_NAME"
+            sudo make INSTALLDIR=./cdf install
+
+      - name: Zip CDF Library in home
+        if: steps.check_maintainer.outputs.is_maintainer != '' && steps.download_cdf.outputs.is_up_to_date == '' # Only run this step if the user is a maintainer and the CDF library is not up to date
+        run: |
+              FOLDER_NAME="${{ steps.build_cdf.outputs.folder_name }}"
+
+              cd "$FOLDER_NAME"
+              zip -r latest.zip cdf
+    
+      - name: Upload CDF Library to GitHub Artifacts
+        if: steps.check_maintainer.outputs.is_maintainer != '' && steps.download_cdf.outputs.is_up_to_date == '' # Only run this step if the user is a maintainer and the CDF library is not up to date
+        uses: actions/upload-artifact@v2
+        with:
+          name: cdf
+          path: "${{ steps.build_cdf.outputs.folder_name }}/latest.zip"
+          
+      - name: Configure AWS Credentials For GitHub Actions
+        if: steps.check_maintainer.outputs.is_maintainer != '' && steps.download_cdf.outputs.is_up_to_date == '' # Only run this step if the user is a maintainer and the CDF library is not up to date
+        uses: aws-actions/configure-aws-credentials@v2
+        with:
+          role-to-assume: ${{ secrets.AWS_ROLE_TO_ASSUME }}
+          aws-region: ${{ secrets.AWS_REGION }}
+
+      - name: Upload CDF Library to S3
+        if: steps.check_maintainer.outputs.is_maintainer != '' && steps.download_cdf.outputs.is_up_to_date == '' # Only run this step if the user is a maintainer and the CDF library is not up to date
+        run: |
+          S3_BUCKET_NAME="${{ secrets.AWS_S3_BUCKET_NAME }}"
+          FILENAME="${{ steps.build_cdf.outputs.folder_name }}/latest.zip"
+          LATEST_VERSION="${{ steps.check_latest_version.outputs.latest_version }}"
+          PARSED_LATEST_VERSION="${LATEST_VERSION%.tar.gz}"
+
+          aws s3 cp $FILENAME s3://$S3_BUCKET_NAME/cdf-binaries/latest.zip
+          aws s3 cp $FILENAME s3://$S3_BUCKET_NAME/cdf-binaries/$PARSED_LATEST_VERSION.zip
+      
+      - name: Create Pull Request
+        if: steps.check_maintainer.outputs.is_maintainer != '' && steps.download_cdf.outputs.is_up_to_date == '' # Only run this step if the user is a maintainer and the CDF library is not up to date
+        uses: peter-evans/create-pull-request@v5.0.2
+        with:
+          title: 'Update CDF library to latest version (${{ steps.check_latest_version.outputs.latest_version }})'
+          body: '**Note: Close and Re-Open Pull Request to Run Workflow Tests.** Updates CDF library to latest version (${{ steps.check_latest_version.outputs.latest_version }})'
+          draft: true
