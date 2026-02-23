@@ -38,7 +38,6 @@ phases:
         sudo yum install python3-pip -y
         sudo yum install make graphviz -y
         pip3 install -r requirements.txt
-        make html
         echo CST Testing
         container-structure-test test --image ${IMAGE_NAME}:${ENVIRONMENT}-${GIT_TAG} --config cst_config.yaml
         echo Pushing the Docker image...

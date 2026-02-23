@@ -1,12 +1,6 @@
 # swxsoc_pipeline_sdc_aws_base_docker_image
 Base Image used for `swxsoc_pipeline` missions 
 
-| **CodeBuild Status** |![aws build status](https://codebuild.us-east-2.amazonaws.com/badges?uuid=eyJlbmNyeXB0ZWREYXRhIjoieGwxQ2UvcUxkRHRDNldsa2RPVWN0eEo3YjU3VUw3Ym50eUlBV0Y1c29qTFZLcUI0RjV1djBpTmN1dGMySWZsYjAyQ0lDWmtMVXIwSFlKTG9GaGtRMU40PSIsIml2UGFyYW1ldGVyU3BlYyI6IkdyOUZZWHJ2OVhSRHZDUTMiLCJtYXRlcmlhbFNldFNlcmlhbCI6MX0%3D&branch=main)|
-|-|-|
-| **Docs Status** |![Documentation Status](https://readthedocs.org/projects/sdc-aws-base-docker-image/badge/?version=latest)
-
-
-
 ### **Description**:
 This repository is to define the image to be used for the development environments (vscode `.devcontainers`) as well as the base container for the lambda functions. It includes all needed packages for development.
 
