@@ -42,13 +42,6 @@ phases:
         docker tag "${IMAGE_NAME}:${ENVIRONMENT}-${GIT_TAG}" "public.ecr.aws/w5r9l1c8/${IMAGE_NAME}:${ENVIRONMENT}-${GIT_TAG}"
         docker tag "${IMAGE_NAME}:${ENVIRONMENT}-${GIT_TAG}" "public.ecr.aws/w5r9l1c8/${IMAGE_NAME}:latest"
 
-        curl -fsSL -o container-structure-test-linux-amd64 https://storage.googleapis.com/container-structure-test/latest/container-structure-test-linux-amd64
-        chmod +x container-structure-test-linux-amd64
-        sudo mv container-structure-test-linux-amd64 /usr/local/bin/container-structure-test
-
-        echo "CST testing..."
-        container-structure-test test --image "${IMAGE_NAME}:${ENVIRONMENT}-${GIT_TAG}" --config cst_config.yaml
-
         echo "Pushing Docker image..."
         docker push "public.ecr.aws/w5r9l1c8/${IMAGE_NAME}:${ENVIRONMENT}-${GIT_TAG}"
         docker push "public.ecr.aws/w5r9l1c8/${IMAGE_NAME}:latest"

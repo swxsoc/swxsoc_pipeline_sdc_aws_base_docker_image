@@ -15,7 +15,7 @@ jobs:
 
   build:
 
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-24.04
 
     steps:
     - uses: actions/checkout@v3
@@ -30,8 +30,3 @@ jobs:
       run: curl -LO https://storage.googleapis.com/container-structure-test/latest/container-structure-test-linux-amd64 && chmod +x container-structure-test-linux-amd64 && sudo mv container-structure-test-linux-amd64 /usr/local/bin/container-structure-test
     - name: Run CST Tests
       run: container-structure-test test --image container-image:latest --config cst_config.yaml
-
-
-
-      
-      

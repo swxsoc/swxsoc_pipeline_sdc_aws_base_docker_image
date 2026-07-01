@@ -31,7 +31,17 @@ commandTests:
   args: ['container-tests/check_installed_py_packages.py']
   excludedError: ['.*FAIL.*']
   expectedOutput: ['.*SUCCESS.*']
-- name: 'requirements-file'
-  command: 'sh'
-  args: ['-c', 'test -f /requirements.txt && echo FOUND']
-  expectedOutput: ['FOUND']
+
+
+# Test if needed files exist
+fileExistenceTests:
+- name: 'Root'
+  path: '/'
+  shouldExist: true
+  uid: 0
+  gid: 0
+- name: 'Python Requirements'
+  path: '/requirements.txt'
+  shouldExist: true
+  uid: 0
+  gid: 0
