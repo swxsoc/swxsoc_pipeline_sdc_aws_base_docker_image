@@ -63,6 +63,14 @@ phases:
           --environment-variables-override name=ENVIRONMENT,value="$ENVIRONMENT",type=PLAINTEXT \
           --environment-variables-override name=GIT_TAG,value="$GIT_TAG",type=PLAINTEXT \
           --environment-variables-override name=PUBLIC_ECR_REPO,value="$PUBLIC_ECR_REPO",type=PLAINTEXT
+        
+        echo "Starting artifacts lambda CodeBuild project..."
+        aws codebuild start-build --region "$AWS_REGION" \
+          --project-name build_swxsoc_pipeline_sdc_aws_artifact_lambda \
+          --environment-variables-override name=CDK_ENVIRONMENT,value="${CDK_ENVIRONMENT:-}",type=PLAINTEXT \
+          --environment-variables-override name=ENVIRONMENT,value="$ENVIRONMENT",type=PLAINTEXT \
+          --environment-variables-override name=GIT_TAG,value="$GIT_TAG",type=PLAINTEXT \
+          --environment-variables-override name=PUBLIC_ECR_REPO,value="$PUBLIC_ECR_REPO",type=PLAINTEXT
 
   post_build:
     commands:
