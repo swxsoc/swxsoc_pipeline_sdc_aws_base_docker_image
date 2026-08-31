@@ -8,7 +8,36 @@ This container is built and pushed to the public repo ECR automatically by AWS C
 
 ### **Base Image**: Ubuntu 24.04 ([public.ecr.aws/lts/ubuntu:24.04_stable](https://gallery.ecr.aws/lts/ubuntu))
 
-### **ECR Repo:** Docker Lambda Base Image ([public.ecr.aws/w5r9l1c8/swsoc-docker-lambda-base:latest](https://gallery.ecr.aws/w5r9l1c8/swsoc-docker-lambda-base))
+### **ECR Repo:** Docker Lambda Base Image ([public.ecr.aws/w5r9l1c8/dev-swxsoc-pipeline-docker-lambda-base:latest](https://gallery.ecr.aws/w5r9l1c8/dev-swxsoc-pipeline-docker-lambda-base))
+
+### **Deployment contract**
+
+CodeBuild publishes only an exact current `main` commit or a release tag.
+Pull requests, stale commits, and other branches finish without publishing or
+starting downstream builds. Development is the default; a release tag or
+`CDK_ENVIRONMENT=PRODUCTION` selects the production repository.
+
+Each build pushes a versioned image as well as the convenience `latest` alias.
+The versioned public ECR URI is passed to Sorting, Processing, and Artifacts
+using `PUBLIC_ECR_REPO`, together with the normalized `CDK_ENVIRONMENT`.
+Downstream Lambda projects are always started from their `main` branch and
+validate both values before building, preventing a production/dev crossover or
+a stale Lambda source deployment.
+The base repository's commit SHA is intentionally not passed as a downstream
+source version because it does not exist in the Lambda repositories; each
+Lambda build fetches and confirms its resolved SHA equals its own current
+`origin/main` before publishing.
+
+| Build source | Result |
+| --- | --- |
+| Current `main` | Publish the development base image and fan out development Lambda builds from exact Lambda `main` |
+| Release tag | Publish the production base image and fan out production Lambda builds from exact Lambda `main` |
+| Current `main` with `CDK_ENVIRONMENT=PRODUCTION` | Publish a versioned production rebuild and fan out production Lambda builds |
+| Pull request, non-main branch, or stale commit | Skip publishing and downstream builds |
+
+The fan-out sends one CodeBuild override list containing
+`CDK_ENVIRONMENT` and the versioned `PUBLIC_ECR_REPO`; it never hands a
+downstream build the mutable `latest` alias.
 
 ## Included OS Packages
 - git
