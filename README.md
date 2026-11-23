@@ -39,6 +39,24 @@ The fan-out sends one CodeBuild override list containing
 `CDK_ENVIRONMENT` and the versioned `PUBLIC_ECR_REPO`; it never hands a
 downstream build the mutable `latest` alias.
 
+### **Missions**
+
+This repository also builds the base image for missions that have no base
+image repository of their own, such as the `demo` test mission. The mission is
+taken from `MISSION_NAME`, or from the CodeBuild project name
+(`build_<mission>_sdc_aws_base_docker_image`), and defaults to
+`swxsoc_pipeline`, so the existing project behaves as before. A build whose
+`MISSION_NAME` disagrees with its project name fails before anything is
+published.
+
+| Mission | Public ECR repository (development has a `dev-` prefix) | Lambda builds started |
+| --- | --- | --- |
+| `swxsoc_pipeline` (default) | `swxsoc-pipeline-docker-lambda-base` | `build_swxsoc_pipeline_sdc_aws_{sorting,processing,artifact}_lambda` |
+| any other, for example `demo` | `<mission>-swsoc-docker-lambda-base`, underscores as hyphens (`demo-swsoc-docker-lambda-base`) | `build_<mission>_sdc_aws_{sorting,processing,artifact}_lambda` |
+
+These are the names the Lambda image buildspecs expect for the mission; they
+reject a `PUBLIC_ECR_REPO` from any other repository.
+
 ## Included OS Packages
 - git
 - wget

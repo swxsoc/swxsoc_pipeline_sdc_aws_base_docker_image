@@ -6,6 +6,12 @@ env:
 # Build a versioned public base image, then fan out exact-main Lambda builds.
 # The downstream contract deliberately contains only the normalized deployment
 # environment and the immutable base-image URI.
+#
+# One repository serves every mission that has no base image repository of its
+# own. The mission comes from MISSION_NAME, or from the CodeBuild project name
+# (build_<mission>_sdc_aws_base_docker_image), and defaults to swxsoc_pipeline.
+# It selects the public ECR repository the image is pushed to and the
+# build_<mission>_sdc_aws_*_lambda projects that are started afterwards.
 phases:
   build:
     commands:
@@ -27,12 +33,22 @@ phases:
           BANNER_ACTION='publish base and fan out Lambda builds (guarded)'
         fi
         BANNER_PROJECT=${CODEBUILD_BUILD_ID%%:*}
+        BANNER_MISSION=${MISSION_NAME:-}
+        if [ -z "${BANNER_MISSION}" ]; then
+          case "${BANNER_PROJECT}" in
+            build_*_sdc_aws_base_docker_image)
+              BANNER_MISSION=${BANNER_PROJECT#build_}
+              BANNER_MISSION=${BANNER_MISSION%_sdc_aws_base_docker_image}
+              ;;
+            *) BANNER_MISSION=swxsoc_pipeline ;;
+          esac
+        fi
         BANNER_COMMIT=${CODEBUILD_RESOLVED_SOURCE_VERSION:-unknown}
         printf '\n%s\n' '================================================================================'
         printf '  SWxSOC BUILD: SWxSOC PIPELINE BASE IMAGE\n'
         printf '%s\n' '================================================================================'
         printf '  Environment : %s\n' "${BANNER_ENVIRONMENT}"
-        printf '  Mission     : swxsoc_pipeline\n'
+        printf '  Mission     : %s\n' "${BANNER_MISSION}"
         printf '  Service     : container-base\n'
         printf '  Action      : %s\n' "${BANNER_ACTION}"
         printf '  Project     : %s\n' "${BANNER_PROJECT:-local}"
@@ -117,6 +133,41 @@ phases:
           validate_container_tag "${RELEASE_TAG}"
         fi
 
+        # The mission decides where the image goes and which Lambda builds
+        # follow, so a build whose MISSION_NAME disagrees with its project
+        # name stops here rather than publishing into another mission.
+        CODEBUILD_PROJECT=${CODEBUILD_BUILD_ID:-}
+        CODEBUILD_PROJECT=${CODEBUILD_PROJECT%%:*}
+        case "${CODEBUILD_PROJECT}" in
+          build_*_sdc_aws_base_docker_image)
+            PROJECT_MISSION=${CODEBUILD_PROJECT#build_}
+            PROJECT_MISSION=${PROJECT_MISSION%_sdc_aws_base_docker_image}
+            ;;
+          *)
+            PROJECT_MISSION=""
+            ;;
+        esac
+        MISSION_NAME=${MISSION_NAME:-${PROJECT_MISSION:-swxsoc_pipeline}}
+        case "${MISSION_NAME}" in
+          ""|*[!a-z0-9_]*)
+            echo "MISSION_NAME '${MISSION_NAME}' must be lowercase letters, digits, and underscores"
+            exit 1
+            ;;
+        esac
+        if [ -n "${PROJECT_MISSION}" ] && [ "${MISSION_NAME}" != "${PROJECT_MISSION}" ]; then
+          echo "MISSION_NAME=${MISSION_NAME} does not match CodeBuild project mission ${PROJECT_MISSION}"
+          exit 1
+        fi
+        # These names must match what the Lambda image buildspecs expect for
+        # the mission: <mission>-swsoc-docker-lambda-base, with underscores as
+        # hyphens, except for swxsoc_pipeline's own repository name.
+        if [ "${MISSION_NAME}" = "swxsoc_pipeline" ]; then
+          BASE_IMAGE_REPO_NAME=swxsoc-pipeline-docker-lambda-base
+        else
+          MISSION_SLUG=$(printf '%s' "${MISSION_NAME}" | tr '_' '-')
+          BASE_IMAGE_REPO_NAME="${MISSION_SLUG}-swsoc-docker-lambda-base"
+        fi
+
         CDK_ENVIRONMENT_NORMALIZED=$(normalize_environment "${CDK_ENVIRONMENT:-}")
         LEGACY_ENVIRONMENT_NORMALIZED=$(normalize_environment "${ENVIRONMENT:-}")
         if [ -n "${CDK_ENVIRONMENT_NORMALIZED}" ] && \
@@ -134,18 +185,18 @@ phases:
           fi
           CDK_ENVIRONMENT=PRODUCTION
           IMAGE_ENVIRONMENT=prod
-          IMAGE_NAME=swxsoc-pipeline-docker-lambda-base
+          IMAGE_NAME=${BASE_IMAGE_REPO_NAME}
           IMAGE_VERSION=${RELEASE_TAG}
         elif [ "${REQUESTED_ENVIRONMENT}" = "PRODUCTION" ]; then
           CDK_ENVIRONMENT=PRODUCTION
           IMAGE_ENVIRONMENT=prod
-          IMAGE_NAME=swxsoc-pipeline-docker-lambda-base
+          IMAGE_NAME=${BASE_IMAGE_REPO_NAME}
           SOURCE_SHA=${CODEBUILD_RESOLVED_SOURCE_VERSION:-$(git rev-parse HEAD)}
           IMAGE_VERSION="$(printf '%.12s' "${SOURCE_SHA}")-${CODEBUILD_BUILD_NUMBER:-0}"
         else
           CDK_ENVIRONMENT=DEVELOPMENT
           IMAGE_ENVIRONMENT=dev
-          IMAGE_NAME=dev-swxsoc-pipeline-docker-lambda-base
+          IMAGE_NAME="dev-${BASE_IMAGE_REPO_NAME}"
           SOURCE_SHA=${CODEBUILD_RESOLVED_SOURCE_VERSION:-$(git rev-parse HEAD)}
           IMAGE_VERSION="$(printf '%.12s' "${SOURCE_SHA}")-${CODEBUILD_BUILD_NUMBER:-0}"
         fi
@@ -180,9 +231,9 @@ phases:
               name=PUBLIC_ECR_REPO,value="${PUBLIC_ECR_REPO}",type=PLAINTEXT
         }
 
-        start_lambda_build build_swxsoc_pipeline_sdc_aws_sorting_lambda
-        start_lambda_build build_swxsoc_pipeline_sdc_aws_processing_lambda
-        start_lambda_build build_swxsoc_pipeline_sdc_aws_artifact_lambda
+        start_lambda_build "build_${MISSION_NAME}_sdc_aws_sorting_lambda"
+        start_lambda_build "build_${MISSION_NAME}_sdc_aws_processing_lambda"
+        start_lambda_build "build_${MISSION_NAME}_sdc_aws_artifact_lambda"
 
   post_build:
     commands:
